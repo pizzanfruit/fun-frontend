@@ -1,5 +1,5 @@
 <template>
-  <div v-if="$route.name !== 'setup'" class="chat" v-click-outside="closeList">
+  <div v-if="!$route.name || $route.name !== 'setup'" class="chat" v-click-outside="closeList">
     <div class="box" @click="handleBoxClick">
       Online
       <span
@@ -13,8 +13,8 @@
         v-for="player in onlinePlayers"
         :key="player.id"
         @click="setCurrentPlayer(player.id)"
-        :class="{active: currentPlayerId === player.id}"
-      >{{player.name}}</li>
+        :class="{active: currentPlayerName === player.id}"
+      >{{player.id}}</li>
     </ul>
     <div class="chatbox"></div>
   </div>
@@ -25,18 +25,19 @@ import { Component, Vue } from "vue-property-decorator";
 import { State, Mutation, namespace } from "vuex-class";
 
 @Component
-export default class PlayerInfo extends Vue {
+export default class Chat extends Vue {
   @State("onlinePlayers") public onlinePlayers: any;
-  public currentPlayerId: string = "";
+  public currentPlayerName: string = "";
   public showOnlineList = false;
+
   get onlinePlayersCount() {
     return this.onlinePlayers.length;
   }
   public handleBoxClick() {
     this.showOnlineList = !this.showOnlineList;
   }
-  public setCurrentPlayer(id: string) {
-    this.currentPlayerId = this.currentPlayerId === id ? "" : id;
+  public setCurrentPlayer(name: string) {
+    this.currentPlayerName = this.currentPlayerName === name ? "" : name;
   }
   public closeList() {
     this.showOnlineList = false;

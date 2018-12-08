@@ -31,6 +31,11 @@ const router = new Router({
 // User has to setup before playing
 router.beforeEach((to, from, next) => {
   if (to.path !== "/setup") {
+    // If no socket found, return to setup page
+    if (!store.state.socket) {
+      next("/setup");
+      return;
+    }
     // not logged in
     if (!store.state.players || !store.state.players.current.name) {
       const playerName = sessionStorage.getItem("pepper-session-playerName");
@@ -45,11 +50,12 @@ router.beforeEach((to, from, next) => {
     }
   } else {
     // to /setup but already logged in
-    if (store.state.players && store.state.players.current.name) {
-      next("/rooms");
-    } else {
-      next();
-    }
+    // if (store.state.players && store.state.players.current.name) {
+    //   next("/rooms");
+    // } else {
+    //   next();
+    // }
+    next();
   }
 });
 

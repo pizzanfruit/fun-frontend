@@ -1,6 +1,9 @@
 <template>
   <div v-if="$route.name !== 'setup'" class="player-info">
-    <div class="greetings">Hi, {{playerName}}</div>
+    <div class="greetings">
+      Hi,
+      <span class="blue">{{playerName}}</span>
+    </div>
     <div class="menus">
       <button type="button" @click="handleChangeName">Change name</button>
     </div>
@@ -16,9 +19,7 @@ const playersModule = namespace("players");
 @Component
 export default class PlayerInfo extends Vue {
   @playersModule.State(state => state.current.name) public playerName: any;
-  @playersModule.Mutation("setCurrentName") public setPlayername: any;
   public handleChangeName() {
-    this.setPlayername("");
     this.$router.push({ name: "setup" });
   }
 }
@@ -32,5 +33,9 @@ export default class PlayerInfo extends Vue {
 }
 .menus button {
   text-decoration: underline;
+}
+
+.blue {
+  color: blue;
 }
 </style>

@@ -9,6 +9,7 @@
       v-model="name"
       :style="{opacity: name === '' ? 0.5 : 1}"
       @input="clearError"
+      :maxlength="MAX_PLAYER_NAME_LENGTH"
     >
     <div v-show="errorMessage" class="error-text">{{errorMessage}}</div>
     <div class="btn-group">
@@ -23,8 +24,14 @@ import { Component, Vue } from "vue-property-decorator";
 import { mapMutations } from "vuex";
 import { Mutation, State, namespace } from "vuex-class";
 import * as _ from "lodash";
+import axios from "axios";
 
-import { ERRORS, MAX_PLAYER_NAME_LENGTH } from "@/config";
+import {
+  ERRORS,
+  MAX_PLAYER_NAME_LENGTH,
+  BACKEND_URL,
+  BACKEND_WS
+} from "@/config";
 
 const playersModule = namespace("players");
 
@@ -44,11 +51,21 @@ const PRESET_NAMES = [
 @Component
 export default class Setup extends Vue {
   @playersModule.Mutation("setCurrentName") public setPlayerName: any;
+  @Mutation("setGlobalLoading") public setGlobalLoading: any;
+  @State public socket?: WebSocket;
+  @Mutation public setSocket: any;
+  public MAX_PLAYER_NAME_LENGTH = MAX_PLAYER_NAME_LENGTH;
+
   private name: string = "";
   private errorMessage: string = "";
 
   public mounted() {
+    sessionStorage.removeItem("pepper-session-playerName");
     this.setPlayerName("");
+    if (this.socket) {
+      this.socket.close();
+    }
+    this.setSocket(undefined);
   }
 
   private async handleNext() {
@@ -65,30 +82,53 @@ export default class Setup extends Vue {
     }
     this.setPlayerName(this.name);
     try {
-      await this.connectAsPlayer(this.name);
+      this.setGlobalLoading(true);
+      const player = await this.registerPlayerByName(this.name);
+      await this.connectAsPlayer(player.name, player.password);
+      this.setGlobalLoading(false);
     } catch (err) {
+      this.setGlobalLoading(false);
       this.showConnectionError(err);
       return;
     }
     this.$router.push({ name: "rooms" });
   }
 
-  private async connectAsPlayer(name: string) {
+  private async registerPlayerByName(name: string) {
+    const res = await axios.post(`${BACKEND_URL}/players`, {
+      name
+    });
+    return res.data;
+  }
+
+  private async connectAsPlayer(name: string, password: string) {
     // Create WebSocket connection.
-    const socket = new WebSocket("ws://localhost:3000/ws");
+    const socket = new WebSocket(BACKEND_WS);
+    this.setSocket(socket);
     /// Connection opened
     socket.addEventListener("open", event => {
-      socket.send("Hello Server!");
+      socket.send(
+        JSON.stringify({
+          name,
+          password
+        })
+      );
     });
 
     // Listen for messages
-    socket.addEventListener("message", event => {
-      // console.log("Message from server ", event.data);
+    socket.addEventListener("close", event => {
+      this.setGlobalLoading(false);
+      console.log("Closing message from server ", event);
+      this.$router.push({ name: "setup" });
     });
   }
 
-  private showConnectionError(error: Error) {
-    // console.error("Connection error!", error);
+  private showConnectionError(error: any) {
+    if (error.response && error.response.data === "AlreadyExists") {
+      this.setErrorMessage("Name already taken. Pick something else!");
+    } else {
+      this.setErrorMessage(error.message);
+    }
   }
 
   private setErrorMessage(message: string) {

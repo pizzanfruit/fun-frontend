@@ -6,43 +6,25 @@
       </div>
       <div class="menu">
         <button type="button" @click="handleBack">Back</button>
-        <button type="button" @click="toggleReady">Ready</button>
+        <button
+          type="button"
+          :class="toggleReadyLabel.toLowerCase()"
+          @click="toggleReady"
+        >{{toggleReadyLabel}}</button>
         <button type="button" @click="startGame">Start</button>
       </div>
     </div>
     <div class="chat">
       <div class="area">
         <ul>
-          <li class="message">
-            <span class="username">Username</span>:
-            <span
-              class="content"
-            >Lorem ipsum dolor sit amet consectetur adipisicing elit. Eligendi deleniti quae doloribus modi quod! Esse nobis corporis veritatis odio eligendi quis eos consequuntur? Optio quis iusto repudiandae vero nulla neque.</span>
+          <li v-for="(msg, index) in chat.messages" :key="index" class="message">
+            <span class="username">{{msg.playerName}}</span>:
+            <span class="content">{{msg.content}}</span>
           </li>
-          <li class="message">
-            <span class="username">Username</span>:
-            <span
-              class="content"
-            >Lorem ipsum dolor sit amet consectetur adipisicing elit. Eligendi deleniti quae doloribus modi quod! Esse nobis corporis veritatis odio eligendi quis eos consequuntur? Optio quis iusto repudiandae vero nulla neque.</span>
-          </li>
-          <li class="message">
-            <span class="username">Username</span>:
-            <span
-              class="content"
-            >Lorem ipsum dolor sit amet consectetur adipisicing elit. Eligendi deleniti quae doloribus modi quod! Esse nobis corporis veritatis odio eligendi quis eos consequuntur? Optio quis iusto repudiandae vero nulla neque.</span>
-          </li>
-          <li class="message">
-            <span class="username">Username</span>:
-            <span
-              class="content"
-            >Lorem ipsum dolor sit amet consectetur adipisicing elit. Eligendi deleniti quae doloribus modi quod! Esse nobis corporis veritatis odio eligendi quis eos consequuntur? Optio quis iusto repudiandae vero nulla neque.</span>
-          </li>
-          <li class="message">
-            <span class="username">Username</span>:
-            <span
-              class="content"
-            >Lorem ipsum dolor sit amet consectetur adipisicing elit. Eligendi deleniti quae doloribus modi quod! Esse nobis corporis veritatis odio eligendi quis eos consequuntur? Optio quis iusto repudiandae vero nulla neque.</span>
-          </li>
+          <li
+            v-if="!chat.messages || chat.messages.length === 0"
+            class="empty"
+          >Nothing here yet. Be the first to speak up!</li>
         </ul>
       </div>
       <div class="user-input" :style="{opacity: message === '' ? 0.5 : 1}">
@@ -52,6 +34,8 @@
           placeholder="type something..."
           spellcheck="false"
           v-model="message"
+          @keyup.enter="sendMessage"
+          maxlength="100"
         >
         <button type="button" @click="sendMessage">Send</button>
       </div>
@@ -62,7 +46,7 @@
 <script lang="ts">
 import { Component, Vue, Prop, Watch } from "vue-property-decorator";
 import { mapMutations } from "vuex";
-import { Getter, State, namespace } from "vuex-class";
+import { Getter, State, Mutation, namespace } from "vuex-class";
 import * as _ from "lodash";
 
 import Player from "@/components/Player.vue";
@@ -76,11 +60,39 @@ const playersModule = namespace("players");
   }
 })
 export default class Room extends Vue {
-  @roomsModule.Getter("getById") public getRoomById: any;
-  @playersModule.State("allInRoom") public allPlayers: any;
-  @playersModule.Action("getAllInRoomInfo") public getAllPlayersInfo: any;
-  public room: any = {};
+  @Mutation("setGlobalLoading") public setGlobalLoading: any;
+  @roomsModule.Mutation("appendChat") public appendChat: any;
+  @roomsModule.Mutation("setCurrentId") public setCurrentRoomId: any;
+  @roomsModule.Action("setCurrentChat") public setCurrentRoomChat: any;
+  @roomsModule.Getter("current") public room: any;
+  @roomsModule.State("currentChat") public chat: any;
+  @playersModule.Getter("allInRoom") public allPlayers: any;
+  @playersModule.State(state => state.current.name) public playerName: any;
+  @State public socket?: WebSocket;
   public message: string = "";
+
+  public get currentStatusCode() {
+    return this.allPlayers.find((p: any) => p.id === this.playerName)
+      .statusCode;
+  }
+
+  public get toggleReadyLabel() {
+    if (this.currentStatusCode === 0) {
+      return "Ready";
+    } else {
+      return "Unready";
+    }
+  }
+
+  public updated() {
+    if (this.room) {
+      this.setGlobalLoading(false);
+    }
+    const chatArea = this.$el.querySelector(".chat .area");
+    if (chatArea) {
+      chatArea.scrollTop = chatArea.scrollHeight;
+    }
+  }
 
   @Watch("$route.params.id")
   public onRouteUpdate() {
@@ -90,13 +102,23 @@ export default class Room extends Vue {
   public created() {
     this.loadRoom();
   }
-  public loadRoom() {
-    this.room = this.getRoomById(this.$route.params.id);
-    this.getAllPlayersInfo(this.room.playersById);
+  public async loadRoom() {
+    this.setGlobalLoading(true);
+    this.setCurrentRoomId(this.$route.params.id);
+    this.setCurrentRoomChat();
   }
 
-  public toggleReady() {
-    // asd
+  public async toggleReady() {
+    try {
+      if (this.currentStatusCode === 0) {
+        await this.setStatusCode(2);
+      } else {
+        await this.setStatusCode(0);
+      }
+    } catch (err) {
+      console.log(err);
+      this.$router.push({ name: "setup" });
+    }
   }
 
   public startGame() {
@@ -104,11 +126,122 @@ export default class Room extends Vue {
   }
 
   public sendMessage() {
-    //
+    if (!this.message) {
+      return;
+    }
+    // Eagerly append chat
+    this.appendChat({ playerName: this.playerName, content: this.message });
+    this.send(this.message);
+    this.message = "";
   }
 
-  public handleBack() {
+  public async handleBack() {
+    this.leaveRoom().catch(err => {
+      console.log(err);
+      this.$router.push({ name: "setup" });
+    });
     this.$router.push({ name: "rooms" });
+  }
+
+  private async setStatusCode(statusCode: number): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      const socket = this.socket;
+      if (!socket) {
+        return;
+      }
+      // Create room
+      socket.send(
+        JSON.stringify({
+          type: "change-status",
+          payload: { statusCode }
+        })
+      );
+      socket.addEventListener(
+        "message",
+        event => {
+          try {
+            const res = JSON.parse(event.data);
+            if (res.type === "success") {
+              resolve();
+            } else {
+              reject(res.payload);
+            }
+          } catch (err) {
+            // tslint:disable-next-line:no-console
+            console.error("Can't parse server's response!");
+            reject(err);
+          }
+        },
+        { once: true }
+      );
+    });
+  }
+
+  private async leaveRoom(): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      const socket = this.socket;
+      if (!socket) {
+        return;
+      }
+      // Create room
+      socket.send(
+        JSON.stringify({
+          type: "leave-room"
+        })
+      );
+      socket.addEventListener(
+        "message",
+        event => {
+          try {
+            const res = JSON.parse(event.data);
+            if (res.type === "success") {
+              resolve();
+            } else {
+              reject(res.payload);
+            }
+          } catch (err) {
+            // tslint:disable-next-line:no-console
+            console.error("Can't parse server's response!");
+            reject(err);
+          }
+        },
+        { once: true }
+      );
+    });
+  }
+
+  private async send(message: string): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      const socket = this.socket;
+      if (!socket) {
+        return;
+      }
+      // Create room
+      socket.send(
+        JSON.stringify({
+          type: "chat-in-room",
+          payload: { message }
+        })
+      );
+      socket.addEventListener(
+        "message",
+        event => {
+          try {
+            const res = JSON.parse(event.data);
+            if (res.type === "success") {
+              resolve();
+            } else {
+              reject(res.payload);
+            }
+          } catch (err) {
+            // tslint:disable-next-line:no-console
+            console.error("Can't parse server's response!");
+            reject(err);
+          }
+        },
+        { once: true }
+      );
+    });
   }
 }
 </script>
@@ -142,8 +275,8 @@ $break-small: 950px;
     display: grid;
     padding: 2rem;
     grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
-    grid-template-rows: 10rem;
-    grid-auto-rows: 10rem;
+    // grid-template-rows: 10rem;
+    // grid-auto-rows: 10rem;
     grid-gap: 1rem;
     margin-bottom: 1rem;
   }
@@ -167,6 +300,14 @@ $break-small: 950px;
       padding: 1rem;
       background-color: white;
       cursor: pointer;
+      &.ready {
+        background-color: green;
+        color: white;
+      }
+      &.unready {
+        background-color: red;
+        color: white;
+      }
     }
   }
 }
@@ -197,6 +338,11 @@ $break-small: 950px;
     }
     .message {
       border-bottom: 2px solid lightgray;
+      padding: 0.5rem 0;
+    }
+    .empty {
+      color: lightgrey;
+      font-size: 1.2rem;
       padding: 0.5rem 0;
     }
   }

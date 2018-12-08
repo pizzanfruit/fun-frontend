@@ -3,6 +3,7 @@
     <div id="top-menu">
       <Chat/>
       <PlayerInfo/>
+      <GlobalLoading/>
     </div>
     <router-view/>
   </div>
@@ -14,11 +15,13 @@ import { Vue, Component } from "vue-property-decorator";
 import "@/directives";
 import PlayerInfo from "@/components/PlayerInfo.vue";
 import Chat from "@/components/Chat.vue";
+import GlobalLoading from "@/components/GlobalLoading.vue";
 
 @Component({
   components: {
     PlayerInfo,
-    Chat
+    Chat,
+    GlobalLoading
   }
 })
 export default class App extends Vue {}
@@ -28,10 +31,12 @@ export default class App extends Vue {}
 
 <style lang="scss">
 @import "~sanitize.css";
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  word-break: break-word;
   &::-webkit-scrollbar-track {
     background-color: lightgray;
   }

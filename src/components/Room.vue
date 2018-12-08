@@ -7,11 +7,11 @@
     <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Error sunt in iusto quibusdam ducimus quaerat neque, iure at, nostrum tenetur, eligendi earum fugit? Autem, nobis in maxime repellendus ullam nulla?</div>
     <div class="bottom">
       <div class="join-button">
-        <button v-show="roomStatus==='available'" type="button" @click="this.$emit('join')">JOIN</button>
+        <button v-show="roomStatus==='available'" type="button" @click="$emit('join')">JOIN</button>
       </div>
       <div
         class="player-count-text"
-      >{{room.playersById.length}}/{{room.maxPlayers || DEFAULT_MAX_PLAYERS}} player(s)</div>
+      >{{room.playerByIds.length}}/{{room.maxPlayers || DEFAULT_MAX_PLAYERS}} player(s)</div>
     </div>
   </div>
 </template>
@@ -28,14 +28,17 @@ export default class Room extends Vue {
 
   get roomStatus() {
     const { statusCode } = this.room;
-    if (statusCode === 0) {
-      return "available";
-    }
-    if (statusCode === 1) {
-      return "full";
-    }
     if (statusCode === 2) {
       return "on-going";
+    }
+    if (
+      this.room.playerByIds.length >=
+      (this.room.maxPlayers || this.DEFAULT_MAX_PLAYERS)
+    ) {
+      return "full";
+    }
+    if (statusCode === 0) {
+      return "available";
     }
     return statusCode;
   }
